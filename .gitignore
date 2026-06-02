@@ -1,0 +1,7 @@
+# Harness runtime output — never committed
+artifacts/
+
+# Package-scoped Appium home (xcuitest driver + WebDriverAgent build cache)
+.appium/
+
+node_modules/

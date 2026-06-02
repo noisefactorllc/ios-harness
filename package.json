@@ -1,0 +1,33 @@
+{
+    "name": "ios-harness",
+    "version": "0.1.0",
+    "private": true,
+    "description": "iOS Simulator test harness — runs web apps in real iOS WebKit (Simulator) via simctl + Appium and verifies application functionality.",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/noisefactorllc/ios-harness.git"
+    },
+    "homepage": "https://github.com/noisefactorllc/ios-harness#readme",
+    "main": "lib/runner.js",
+    "bin": {
+        "ios-test": "bin/ios-test",
+        "ios-bootstrap": "bin/ios-bootstrap"
+    },
+    "scripts": {
+        "bootstrap": "node bin/ios-bootstrap",
+        "test": "node bin/ios-test",
+        "selftest": "node --test tests/*.test.js"
+    },
+    "engines": {
+        "node": ">=22.0.0"
+    },
+    "dependencies": {
+        "webdriverio": "^9.0.0",
+        "appium": "^3.5.0"
+    },
+    "appiumDrivers": {
+        "comment": "Installed into the package-scoped APPIUM_HOME by bin/ios-bootstrap, not via npm. xcuitest 11.x requires appium >=3 and supports recent Xcode/iOS.",
+        "xcuitest": "latest"
+    }
+}

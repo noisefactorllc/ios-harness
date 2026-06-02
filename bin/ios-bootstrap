@@ -1,0 +1,138 @@
+#!/usr/bin/env node
+'use strict'
+
+/**
+ * Verify (and where safe, auto-fix) the iOS test harness toolchain:
+ *   1. full Xcode selected (not Command Line Tools)
+ *   2. `xcrun simctl` works
+ *   3. at least one iOS Simulator runtime installed
+ *   4. node_modules installed (appium, webdriverio)
+ *   5. the Appium XCUITest driver installed in the package-scoped APPIUM_HOME
+ *
+ * Auto-fixes 4 (npm install), 5 (appium driver install), and attempts 3
+ * (xcodebuild -downloadPlatform iOS). For a missing Xcode (1/2) it prints the
+ * exact fix and exits non-zero — that step needs your Apple ID and a sudo
+ * `xcode-select`, so it is never done silently.
+ *
+ * Exit codes: 0 = ready, 2 = needs Xcode, 1 = other failure.
+ */
+
+const { execFileSync, spawnSync } = require('node:child_process')
+const fs = require('node:fs')
+const path = require('node:path')
+
+const PKG_ROOT = path.resolve(__dirname, '..')
+const APPIUM_HOME = process.env.APPIUM_HOME || path.join(PKG_ROOT, '.appium')
+const APPIUM_BIN = path.join(PKG_ROOT, 'node_modules', '.bin', 'appium')
+
+let needsXcode = false
+let failed = false
+const ok = (m) => console.log(`  \x1b[32m✓\x1b[0m ${m}`)
+const warn = (m) => console.log(`  \x1b[33m•\x1b[0m ${m}`)
+const bad = (m) => console.log(`  \x1b[31m✗\x1b[0m ${m}`)
+
+function sh(cmd, args, opts = {}) {
+    return execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...opts })
+}
+
+console.log('iOS harness bootstrap\n')
+
+// 1 + 2: full Xcode + simctl
+console.log('Xcode / simctl:')
+let developerDir = '(unknown)'
+try {
+    developerDir = sh('xcode-select', ['-p']).trim()
+} catch {}
+let simctlOk = false
+try {
+    sh('xcrun', ['simctl', 'help'])
+    simctlOk = true
+} catch {}
+
+if (simctlOk) {
+    ok(`simctl available (developer dir: ${developerDir})`)
+} else {
+    const isCLT = /CommandLineTools/.test(developerDir)
+    bad(`simctl NOT available — developer dir is ${developerDir}`)
+    if (isCLT) bad('this is Command Line Tools, NOT full Xcode (no simctl, no Simulator)')
+    console.log('\n  Fix (needs your Apple ID — not done automatically):')
+    console.log('    • install Xcode from the Mac App Store, or:  xcodes install --latest')
+    console.log('    • then point the toolchain at it:')
+    console.log('        sudo xcode-select -s /Applications/Xcode.app/Contents/Developer')
+    console.log('        xcodebuild -runFirstLaunch')
+    needsXcode = true
+}
+
+// 3: iOS runtime
+if (simctlOk) {
+    console.log('\niOS runtime:')
+    let runtimes = []
+    try {
+        const json = JSON.parse(sh('xcrun', ['simctl', 'list', '-j', 'runtimes']))
+        runtimes = (json.runtimes || []).filter((r) => r.isAvailable && /iOS/.test(r.name || ''))
+    } catch (e) {
+        bad(`could not list runtimes: ${e.message}`)
+    }
+    if (runtimes.length) {
+        ok(`${runtimes.length} iOS runtime(s): ${runtimes.map((r) => r.name).join(', ')}`)
+    } else {
+        warn('no iOS runtime installed — attempting `xcodebuild -downloadPlatform iOS` (may take a while)…')
+        const r = spawnSync('xcodebuild', ['-downloadPlatform', 'iOS'], { stdio: 'inherit' })
+        if (r.status === 0) ok('iOS runtime downloaded')
+        else {
+            bad('automatic runtime download failed — install one via Xcode > Settings > Components')
+            failed = true
+        }
+    }
+}
+
+// 4: node_modules
+console.log('\nNode dependencies:')
+if (fs.existsSync(path.join(PKG_ROOT, 'node_modules', 'webdriverio')) && fs.existsSync(APPIUM_BIN)) {
+    ok('appium + webdriverio installed')
+} else {
+    warn('installing node dependencies (npm install)…')
+    const r = spawnSync('npm', ['install'], { cwd: PKG_ROOT, stdio: 'inherit' })
+    if (r.status === 0 && fs.existsSync(APPIUM_BIN)) ok('dependencies installed')
+    else {
+        bad('npm install failed')
+        failed = true
+    }
+}
+
+// 5: Appium XCUITest driver (package-scoped APPIUM_HOME)
+if (fs.existsSync(APPIUM_BIN)) {
+    console.log('\nAppium XCUITest driver:')
+    let installed = false
+    try {
+        const out = sh(APPIUM_BIN, ['driver', 'list', '--installed', '--json'], { env: { ...process.env, APPIUM_HOME } })
+        installed = /xcuitest/.test(out)
+    } catch {}
+    if (installed) {
+        ok('xcuitest driver installed')
+    } else {
+        warn('installing xcuitest driver…')
+        const r = spawnSync(APPIUM_BIN, ['driver', 'install', 'xcuitest'], {
+            cwd: PKG_ROOT,
+            stdio: 'inherit',
+            env: { ...process.env, APPIUM_HOME },
+        })
+        if (r.status === 0) ok('xcuitest driver installed')
+        else {
+            bad('xcuitest driver install failed')
+            failed = true
+        }
+    }
+}
+
+console.log('')
+if (needsXcode) {
+    console.log('\x1b[31mNOT READY\x1b[0m — install full Xcode (see fix above), then re-run: npm run bootstrap')
+    process.exit(2)
+}
+if (failed) {
+    console.log('\x1b[31mNOT READY\x1b[0m — see errors above.')
+    process.exit(1)
+}
+console.log('\x1b[32mREADY\x1b[0m — run:  node bin/ios-test')
+process.exit(0)
