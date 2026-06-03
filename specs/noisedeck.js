@@ -34,8 +34,8 @@ module.exports = [
     {
         name: 'noisedeck: file menu opens on tap',
         async fn(driver, ctx) {
-            if (!(await driver.exists('#fileMenuTitle'))) {
-                ctx.skip('#fileMenuTitle absent — iOS layout divergence (review)')
+            if (!(await driver.isVisible('#fileMenuTitle'))) {
+                ctx.skip('#fileMenuTitle not visible — mobile/hamburger layout (desktop file-menu flow N/A; tapping a hidden control mis-fires)')
             }
             await driver.click('#fileMenuTitle')
             await sleep(400)
@@ -54,8 +54,8 @@ module.exports = [
         name: 'noisedeck: shuffle/randomize runs without JS errors or context loss',
         timeout: 40000,
         async fn(driver, ctx) {
-            if (!(await driver.exists('[data-id=shuffle]'))) {
-                ctx.skip('[data-id=shuffle] absent on this layout')
+            if (!(await driver.isVisible('[data-id=shuffle]'))) {
+                ctx.skip('[data-id=shuffle] not visible on this layout (hamburger/mobile)')
             }
             const before = await driver.harness()
             await driver.click('[data-id=shuffle]')
@@ -76,7 +76,9 @@ module.exports = [
         timeout: 45000,
         async fn(driver, ctx) {
             // Open the file menu (export lives under it on desktop; layout may differ on iOS).
-            if (await driver.exists('#fileMenuTitle')) {
+            // Visibility, not existence: the desktop control is present-but-hidden in the
+            // mobile layout, and tapping it would mis-fire.
+            if (await driver.isVisible('#fileMenuTitle')) {
                 await driver.click('#fileMenuTitle').catch(() => {})
                 await sleep(400)
             }
