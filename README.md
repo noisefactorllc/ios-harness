@@ -52,6 +52,7 @@ Common invocations:
 node bin/ios-test noisedeck            # one product
 node bin/ios-test noisedeck layers     # several
 node bin/ios-test --smoke              # shared iOS-risk suite only (fast)
+node bin/ios-test --native             # build + drive the standalone .app builds (see below)
 node bin/ios-test --list               # list product keys
 npm run selftest                       # the harness's own unit tests (no Simulator)
 ```
@@ -97,12 +98,49 @@ enough. Accepting the Xcode license is a one-time `sudo xcodebuild -license acce
 | `NF_IOS_RUNTIME` | pin runtime, e.g. `iOS 18.2` (default: newest available) |
 | `NF_IOS_DEVICE_NAME` | name of the reused Simulator device (default `nf-ios-harness`) |
 
-## Roadmap
+## Native (standalone `.app`) mode
 
-The driver / `simctl` layers are built to extend from **Mobile Safari** to
-**native iOS builds**: `simctl install` / `simctl launch` a built `.app`, then
-drive its WebView through the same Appium XCUITest context. That enables testing
-standalone (e.g. Capacitor / WKWebView) iOS builds alongside the web-in-Safari path.
+`--native` doesn't serve the app — it **builds the real standalone iOS app** and
+drives that, so the same specs validate the shippable artifact, not just the web
+build. The wrapper is **Capacitor** (a WKWebView shell), in a `mobile/` directory
+inside each product repo.
+
+```bash
+node bin/ios-native init  [product…]   # scaffold <repo>/mobile/ (reproducible)
+node bin/ios-native build [product…]   # cap sync + xcodebuild -> Simulator .app
+node bin/ios-native run    <product>    # build, install, launch in the Simulator (eyeball)
+node bin/ios-test --native [product…]  # build + drive the .app through the full spec suite
+```
+
+Flow: `cap sync ios` copies the product's web root into the native project, then
+`xcodebuild -scheme App -configuration Debug -sdk iphonesimulator
+CODE_SIGNING_ALLOWED=NO` produces an unsigned `App.app`. **Simulator builds need
+no code signing.** Appium installs/launches it (`appium:app`) and attaches to its
+WKWebView, then runs the shared + per-product specs against the bundled content.
+
+A product opts in by adding `native: { appId, appName }` to its `lib/products.js`
+entry. Requires **CocoaPods** (`cap add ios` runs `pod install`).
+
+Two Capacitor-specific notes the harness handles for you:
+
+- Capacitor names its Xcode target **"App"**, so the Web Inspector reports the
+  webview's owning process as `process-App` (not the bundle id). The session sets
+  `appium:additionalWebviewBundleIds: ['process-App']` so Appium finds the page —
+  without it you'd see only `NATIVE_APP`.
+- The WKWebView must be **inspectable** for Appium to attach. Capacitor enables
+  this for `Debug` builds automatically; a release build needs
+  `ios.webContentsDebuggingEnabled` in the Capacitor config.
+
+Two more things worth knowing for camera apps and layout checks:
+
+- **Camera apps**: the iOS Simulator exposes a **virtual camera to native apps but
+  not to Safari**. So in native mode `getUserMedia` succeeds and the harness tests
+  the real camera→render path; in web mode it tests graceful no-camera degradation.
+  The suite probes `enumerateDevices` at load (`ctx.cameraAvailable`) to choose.
+  Native camera apps also need `NSCameraUsageDescription` — `ios-native init`
+  patches Info.plist for products with `capabilities.camera`.
+- **Orientation** is pinned per product every run (the Simulator device persists
+  its last orientation), so viewport checks aren't skewed by a prior landscape app.
 
 ## License
 

@@ -12,7 +12,8 @@
     "main": "lib/runner.js",
     "bin": {
         "ios-test": "bin/ios-test",
-        "ios-bootstrap": "bin/ios-bootstrap"
+        "ios-bootstrap": "bin/ios-bootstrap",
+        "ios-native": "bin/ios-native"
     },
     "scripts": {
         "bootstrap": "node bin/ios-bootstrap",

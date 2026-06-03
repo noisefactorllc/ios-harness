@@ -15,6 +15,13 @@ module.exports = [
         name: 'photobox: degrades gracefully with no camera (shows access-required, no crash)',
         timeout: 30000,
         async fn(driver, ctx) {
+            // The no-camera path only applies when there's genuinely no camera. The
+            // iOS Simulator gives NATIVE apps a virtual camera (but not Safari), so in
+            // native mode getUserMedia succeeds and the app shows its normal capture UI
+            // — the real camera/render path, covered by the shared render specs instead.
+            if (ctx.cameraAvailable) {
+                ctx.skip('a camera is present (Simulator provides one to native apps) — no-camera degradation path N/A; capture/render covered by shared specs')
+            }
             // getUserMedia rejection is async; poll for the app's own error copy.
             const text = await waitForBodyText(driver, 'camera access', { timeout: 15000 })
             assert.ok(await assertAlive(driver), 'photobox is unresponsive (crashed) when no camera is present')

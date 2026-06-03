@@ -4,9 +4,11 @@
 /**
  * Single pre-commit entrypoint for the iOS Simulator test harness.
  *
- *   node bin/ios-test                 # all 9 products, full suites
+ *   node bin/ios-test                 # all products, full suites (web — Mobile Safari)
  *   node bin/ios-test noisedeck       # one or more products by key
  *   node bin/ios-test --smoke         # shared iOS-risk suite only (fast)
+ *   node bin/ios-test --native        # drive the STANDALONE .app builds instead
+ *   node bin/ios-test --native layers # native build for specific product(s)
  *   node bin/ios-test --list          # list product keys
  *
  * Exit code is non-zero on any failure (suitable for a pre-commit gate).
@@ -25,6 +27,8 @@ Products: ${products.allKeys().join(', ')}
 
 Options:
   --smoke        run only the shared iOS-risk suite (skip per-product flows)
+  --native       build + drive the standalone .app instead of the web front-end
+                 (only products with a Capacitor build: ${products.nativeProducts().map((p) => p.key).join(', ')})
   --list         list product keys and exit
   -h, --help     show this help
 
@@ -42,6 +46,7 @@ async function main() {
     }
 
     const sharedOnly = argv.includes('--smoke')
+    const native = argv.includes('--native')
     const keys = argv.filter((a) => !a.startsWith('-'))
 
     // Validate keys up front for a clear error.
@@ -55,7 +60,7 @@ async function main() {
     const { run, formatSummary } = require('../lib/runner')
     let summary
     try {
-        summary = await run({ keys: keys.length ? keys : undefined, sharedOnly, log: (m) => console.log(m) })
+        summary = await run({ keys: keys.length ? keys : undefined, sharedOnly, native, log: (m) => console.log(m) })
     } catch (e) {
         console.error(`\n\x1b[31m✗ harness error:\x1b[0m ${e.message}`)
         if (/toolchain|simctl|Xcode/i.test(e.message)) {

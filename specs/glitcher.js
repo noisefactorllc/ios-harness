@@ -15,6 +15,13 @@ module.exports = [
         name: 'glitcher: degrades gracefully with no camera (#error-banner + upload fallback)',
         timeout: 30000,
         async fn(driver, ctx) {
+            // Only applies with no camera. The Simulator gives NATIVE apps a virtual
+            // camera (not Safari), so in native mode getUserMedia succeeds and glitcher
+            // shows its normal editor — the real capture/render path, covered by the
+            // shared render specs instead.
+            if (ctx.cameraAvailable) {
+                ctx.skip('a camera is present (Simulator provides one to native apps) — no-camera degradation path N/A; capture/render covered by shared specs')
+            }
             const bannerShown = await driver
                 .evaluate(() => {
                     const b = document.querySelector('#error-banner')

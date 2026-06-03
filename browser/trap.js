@@ -98,6 +98,16 @@
                         },
                         false
                     )
+                    // A restored context is no longer lost — track CURRENT state, not
+                    // "ever lost". Renderers that recycle their context on interaction
+                    // (e.g. loading a new program) lose-then-restore and keep rendering.
+                    this.addEventListener(
+                        'webglcontextrestored',
+                        function () {
+                            rec.lost = false
+                        },
+                        false
+                    )
                 } catch (_) {}
             }
         }
