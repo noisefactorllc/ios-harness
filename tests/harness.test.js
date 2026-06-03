@@ -130,15 +130,15 @@ test('runner: loadSpecs composes shared + per-product, sharedOnly trims', () => 
     assert.equal(runner.loadSpecs('__no_such_product__').length, sharedOnly.length)
 })
 
-test('native: native-capable set is well-formed (incl. camera apps photobox/glitcher)', () => {
+test('native: all 8 harness products are native-capable, each well-formed', () => {
     const keys = products.nativeProducts().map((p) => p.key).sort()
-    assert.deepEqual(keys, ['glitcher', 'layers', 'noisedeck', 'photobox', 'polymorphic'])
+    assert.deepEqual(keys, ['foundry', 'glitcher', 'layers', 'noisedeck', 'photobox', 'polymorphic', 'shade', 'shuffleset'])
+    assert.equal(keys.length, products.allKeys().length, 'every harness product has a native build config')
     for (const p of products.nativeProducts()) {
         assert.match(p.native.appId, /^app\.[a-z]+\.ios$/, `${p.key} appId shape`)
         assert.ok(p.native.appName, `${p.key} appName`)
     }
-    // backendGated shuffleset stays web-only; visualize is excluded entirely.
-    assert.ok(!products.BY_KEY.get('shuffleset').native)
+    // visualize is excluded from the harness entirely (desktop-only).
     assert.ok(!products.allKeys().includes('visualize'))
 })
 
