@@ -19,7 +19,6 @@ const products = require('../lib/products')
 const server = require('../lib/server')
 const errors = require('../lib/errors')
 const runner = require('../lib/runner')
-const native = require('../lib/native')
 
 function get(url, headers = {}) {
     return new Promise((resolve, reject) => {
@@ -128,72 +127,6 @@ test('runner: loadSpecs composes shared + per-product, sharedOnly trims', () => 
     }
     // a key with no spec file falls back to shared only
     assert.equal(runner.loadSpecs('__no_such_product__').length, sharedOnly.length)
-})
-
-test('native: all 8 harness products are native-capable, each well-formed', () => {
-    const keys = products.nativeProducts().map((p) => p.key).sort()
-    assert.deepEqual(keys, ['foundry', 'glitcher', 'layers', 'noisedeck', 'photobox', 'polymorphic', 'shade', 'shuffleset'])
-    assert.equal(keys.length, products.allKeys().length, 'every harness product has a native build config')
-    for (const p of products.nativeProducts()) {
-        assert.match(p.native.appId, /^app\.[a-z]+\.ios$/, `${p.key} appId shape`)
-        assert.ok(p.native.appName, `${p.key} appName`)
-    }
-    // visualize is excluded from the harness entirely (desktop-only).
-    assert.ok(!products.allKeys().includes('visualize'))
-})
-
-test('native: gitignore keeps generated output out of the product repo', () => {
-    const body = native.gitignoreBody()
-    const patterns = body.split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'))
-    for (const pat of ['build/', 'node_modules/', 'ios/App/App/public/']) {
-        assert.ok(patterns.includes(pat), `gitignore should ignore ${pat}`)
-    }
-    // It must NOT ignore the tracked native project / config (only comments may mention them).
-    assert.ok(
-        !patterns.some((l) => /capacitor\.config|xcworkspace|xcodeproj|Podfile/.test(l)),
-        'gitignore must not ignore tracked project/config files'
-    )
-})
-
-test('native: Info.plist + synced index paths resolve under the ios project', () => {
-    const pb = products.BY_KEY.get('photobox')
-    assert.match(native.infoPlistPath(pb), /\/mobile\/ios\/App\/App\/Info\.plist$/)
-    assert.match(native.syncedIndexPath(pb), /\/mobile\/ios\/App\/App\/public\/index\.html$/)
-})
-
-test('native: capacitorConfig bundles the real webRoot (webDir relative to mobile/)', () => {
-    const nd = products.BY_KEY.get('noisedeck')
-    const cfg = native.capacitorConfig(nd)
-    assert.equal(cfg.appId, 'app.noisedeck.ios')
-    assert.equal(cfg.appName, 'Noisedeck')
-    assert.equal(cfg.webDir, '../app') // noisedeck webRoot is "app"
-    assert.equal(native.capacitorConfig(products.BY_KEY.get('layers')).webDir, '../public')
-})
-
-test('native: xcodebuildArgs are an unsigned Simulator build; clean prepends', () => {
-    const nd = products.BY_KEY.get('noisedeck')
-    const args = native.xcodebuildArgs(nd)
-    assert.ok(args.includes('-workspace'))
-    assert.ok(args.some((a) => a.endsWith('App.xcworkspace')))
-    assert.deepEqual([args[args.indexOf('-scheme') + 1], args[args.indexOf('-configuration') + 1], args[args.indexOf('-sdk') + 1]], ['App', 'Debug', 'iphonesimulator'])
-    assert.ok(args.includes('CODE_SIGNING_ALLOWED=NO'), 'Simulator builds must not require signing')
-    assert.ok(args.includes('-derivedDataPath'))
-    assert.equal(native.xcodebuildArgs(nd, { clean: true })[0], 'clean')
-})
-
-test('native: appPath points at the Debug-iphonesimulator App.app under mobile/build', () => {
-    const nd = products.BY_KEY.get('noisedeck')
-    const p = native.appPath(nd)
-    assert.match(p, /\/mobile\/build\/Build\/Products\/Debug-iphonesimulator\/App\.app$/)
-    assert.equal(native.bundleId(nd), 'app.noisedeck.ios')
-})
-
-test('native: mobilePackageJson pins Capacitor 7 with a valid semver', () => {
-    const pkg = native.mobilePackageJson(products.BY_KEY.get('polymorphic'))
-    assert.equal(pkg.name, 'polymorphic-mobile')
-    assert.match(pkg.version, /^\d+\.\d+\.\d+$/) // must be x.y.z semver
-    assert.match(pkg.dependencies['@capacitor/ios'], /^\^7/)
-    assert.match(pkg.devDependencies['@capacitor/cli'], /^\^7/)
 })
 
 test('runner: summarize + formatSummary report pass/fail correctly', () => {

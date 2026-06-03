@@ -52,17 +52,6 @@ module.exports = [
             await driver.ready(ctx.product.ready, { timeout: 40000 })
             const title = await driver.title()
             ctx.log(`      title: ${JSON.stringify(title)}`)
-            // Camera apps: detect whether a camera is ACTUALLY present. The iOS
-            // Simulator exposes a virtual camera to NATIVE apps (WKWebView) but not to
-            // Mobile Safari — so this decides whether later specs test the real
-            // capture/render path (camera present) or graceful no-camera degradation
-            // (absent). Read by the webgl/viewport/render specs + the per-product
-            // camera-denied specs via ctx.cameraAvailable.
-            if (ctx.product.requiresCamera) {
-                const md = await driver.mediaDevices().catch(() => ({ ok: false, video: 0 }))
-                ctx.cameraAvailable = !!(md && md.video > 0)
-                ctx.log(`      camera: ${(md && md.video) || 0} videoinput device(s) → cameraAvailable=${ctx.cameraAvailable}`)
-            }
         },
     },
 
@@ -88,8 +77,8 @@ module.exports = [
         name: 'WebGL context is created and not lost',
         capability: 'webgl',
         async fn(driver, ctx) {
-            if (ctx.product.requiresCamera && !ctx.cameraAvailable) {
-                ctx.skip('renderer needs a camera feed not present here — see the camera-denied spec')
+            if (ctx.product.requiresCamera) {
+                ctx.skip('renderer needs a camera feed the Simulator lacks — see the camera-denied spec')
             }
             // Renderers often create their GL context asynchronously (shader load,
             // first rAF). Poll up to 15s rather than checking once and racing init.
@@ -98,16 +87,6 @@ module.exports = [
             while (h.glContextCount === 0 && Date.now() < deadline) {
                 await sleep(500)
                 h = await driver.harness()
-            }
-            // Camera apps: cameraAvailable is detected from enumerateDevices (a passive
-            // signal — we don't getUserMedia-probe, which would contend with the app's
-            // own capture). enumerable ≠ capturable: a device can be listed but capture
-            // denied/unreadable, in which case the app shows its camera-denied UI and
-            // creates no GL context. That's not a renderer failure — skip (and tell the
-            // render/viewport specs to skip too) rather than false-fail.
-            if (ctx.product.requiresCamera && h.glContextCount === 0) {
-                ctx.cameraCaptureFailed = true
-                ctx.skip('camera enumerable but capture yielded no renderer (likely denied/unreadable on this Simulator) — camera→render path not exercised')
             }
             assert.ok(h.glContextCount > 0, 'no WebGL/WebGL2 context created within 15s — renderer failed to initialize on iOS')
             assert.equal(h.glLost, 0, `${h.glLost} WebGL context(s) were lost on iOS`)
@@ -118,8 +97,8 @@ module.exports = [
     {
         name: 'primary UI is within the iPhone viewport (no safe-area clipping)',
         async fn(driver, ctx) {
-            if (ctx.product.requiresCamera && (!ctx.cameraAvailable || ctx.cameraCaptureFailed)) {
-                ctx.skip('primary render surface is hidden without working camera capture — see the camera-denied spec')
+            if (ctx.product.requiresCamera) {
+                ctx.skip('primary render surface is hidden without a camera — see the camera-denied spec')
             }
             const v = await driver.viewportVisibility(ctx.product.primarySelector)
             assert.ok(v.found, `primary surface "${ctx.product.primarySelector}" not found in DOM`)
@@ -135,8 +114,8 @@ module.exports = [
         name: 'renders content (non-blank canvas / live GL context)',
         capability: 'webgl',
         async fn(driver, ctx) {
-            if (ctx.product.requiresCamera && (!ctx.cameraAvailable || ctx.cameraCaptureFailed)) {
-                ctx.skip('rendering needs working camera capture not present here — see the camera-denied spec')
+            if (ctx.product.requiresCamera) {
+                ctx.skip('rendering needs a camera feed the Simulator lacks — see the camera-denied spec')
             }
             const primary = ctx.product.primarySelector.split(',')[0].trim()
             // These are continuous renderers — poll the canvas for visual variation.
@@ -193,26 +172,7 @@ module.exports = [
             const alive = await driver.evaluate(() => 2 + 2).catch(() => null)
             assert.equal(alive, 4, 'page is unresponsive (possible crash/reload) after interaction')
             const h = await driver.harness()
-            // This spec performs an ARBITRARY interaction (a blind native tap) which
-            // may hit a control that legitimately recycles the GL context — e.g.
-            // loading a new program fires webglcontextlost and creates a fresh one.
-            // That is survival, not a crash, so assert a LIVE WebGL context REMAINS
-            // rather than that no loss ever fired. (Per-product specs that drive a
-            // SPECIFIC controlled action — shuffle/paint/play — keep the stricter
-            // "no new loss" delta, where a loss WOULD be a real regression.)
-            // WebGL-only counts: a live WebGPU context must not mask a dead WebGL one.
-            // Guard on count>0: only assert liveness if a WebGL renderer was actually
-            // established. Camera apps with no camera (Simulator) legitimately create
-            // zero contexts — covered by their own graceful-degradation spec, not a
-            // failure here. (Outright create-failure for non-camera products is caught
-            // by the dedicated "WebGL context is created" spec above.)
-            if (ctx.product.capabilities.webgl && h.glWebglContextCount > 0) {
-                const live = h.glWebglContextCount - h.glWebglLost
-                assert.ok(
-                    live > 0,
-                    `WebGL renderer died during interaction: all ${h.glWebglContextCount} context(s) lost and not recovered on iOS`
-                )
-            }
+            assert.equal(h.glLost, 0, 'WebGL context lost during interaction')
             const real = dropBenign(classifyErrors(h.errors).realJs, ctx.product)
             assert.equal(
                 real.length,
