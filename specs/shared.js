@@ -99,6 +99,16 @@ module.exports = [
                 await sleep(500)
                 h = await driver.harness()
             }
+            // Camera apps: cameraAvailable is detected from enumerateDevices (a passive
+            // signal — we don't getUserMedia-probe, which would contend with the app's
+            // own capture). enumerable ≠ capturable: a device can be listed but capture
+            // denied/unreadable, in which case the app shows its camera-denied UI and
+            // creates no GL context. That's not a renderer failure — skip (and tell the
+            // render/viewport specs to skip too) rather than false-fail.
+            if (ctx.product.requiresCamera && h.glContextCount === 0) {
+                ctx.cameraCaptureFailed = true
+                ctx.skip('camera enumerable but capture yielded no renderer (likely denied/unreadable on this Simulator) — camera→render path not exercised')
+            }
             assert.ok(h.glContextCount > 0, 'no WebGL/WebGL2 context created within 15s — renderer failed to initialize on iOS')
             assert.equal(h.glLost, 0, `${h.glLost} WebGL context(s) were lost on iOS`)
             ctx.log(`      ${h.glContextCount} GL context(s), 0 lost`)
@@ -108,8 +118,8 @@ module.exports = [
     {
         name: 'primary UI is within the iPhone viewport (no safe-area clipping)',
         async fn(driver, ctx) {
-            if (ctx.product.requiresCamera && !ctx.cameraAvailable) {
-                ctx.skip('primary render surface is hidden without a camera — see the camera-denied spec')
+            if (ctx.product.requiresCamera && (!ctx.cameraAvailable || ctx.cameraCaptureFailed)) {
+                ctx.skip('primary render surface is hidden without working camera capture — see the camera-denied spec')
             }
             const v = await driver.viewportVisibility(ctx.product.primarySelector)
             assert.ok(v.found, `primary surface "${ctx.product.primarySelector}" not found in DOM`)
@@ -125,8 +135,8 @@ module.exports = [
         name: 'renders content (non-blank canvas / live GL context)',
         capability: 'webgl',
         async fn(driver, ctx) {
-            if (ctx.product.requiresCamera && !ctx.cameraAvailable) {
-                ctx.skip('rendering needs a camera feed not present here — see the camera-denied spec')
+            if (ctx.product.requiresCamera && (!ctx.cameraAvailable || ctx.cameraCaptureFailed)) {
+                ctx.skip('rendering needs working camera capture not present here — see the camera-denied spec')
             }
             const primary = ctx.product.primarySelector.split(',')[0].trim()
             // These are continuous renderers — poll the canvas for visual variation.

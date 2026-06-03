@@ -11,9 +11,7 @@
  */
 
 const assert = require('node:assert/strict')
-const { realJsDelta } = require('../lib/errors')
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+const { sleep, realJsDelta } = require('../lib/spec-helpers')
 
 module.exports = [
     {
