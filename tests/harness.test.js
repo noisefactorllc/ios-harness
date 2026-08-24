@@ -12,6 +12,7 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
+const os = require('node:os')
 const path = require('node:path')
 const http = require('node:http')
 
@@ -114,6 +115,26 @@ test('server: serveStatic serves, injects, supports Range, blocks traversal', as
         assert.ok(trav.status === 403 || trav.status === 404, 'path traversal must be blocked')
     } finally {
         await srv.close()
+    }
+})
+
+test('server: serveStatic resolves suffix byte ranges from the end of the file', async () => {
+    const webRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ios-harness-range-'))
+    fs.writeFileSync(path.join(webRoot, 'media.bin'), '0123456789')
+    const srv = await server.serveStatic({ webRoot, inject: false })
+    try {
+        const suffix = await get(srv.url + '/media.bin', { Range: 'bytes=-3' })
+        assert.equal(suffix.status, 206)
+        assert.equal(suffix.headers['content-range'], 'bytes 7-9/10')
+        assert.equal(suffix.body, '789')
+
+        const oversized = await get(srv.url + '/media.bin', { Range: 'bytes=-20' })
+        assert.equal(oversized.status, 206)
+        assert.equal(oversized.headers['content-range'], 'bytes 0-9/10')
+        assert.equal(oversized.body, '0123456789')
+    } finally {
+        await srv.close()
+        fs.rmSync(webRoot, { recursive: true })
     }
 })
 
