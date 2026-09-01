@@ -1,3 +1,8 @@
+<!-- repo-hero -->
+<a href="https://noisefactor.io/"><img src="docs/hero.jpg" alt="iOS Harness iOS Simulator test harness for web apps" width="100%"></a>
+
+<sub>Open source from <a href="https://noisefactor.io">Noise Factor</a> &middot; <a href="https://github.com/noisefactorllc">more projects</a></sub>
+
 # ios-harness
 
 A test harness that runs **web apps in real iOS WebKit** (the iOS Simulator) and
