@@ -5,9 +5,8 @@
 
 # ios-harness
 
-A test harness that runs **web apps in real iOS WebKit** (the iOS Simulator) and
-verifies application functionality — the iOS-specific surface that desktop
-browser test runners can't see. It pairs **`simctl`** (Simulator lifecycle) with
+This test harness runs **web apps in real iOS WebKit** (the iOS Simulator).
+It verifies application behavior that desktop browser test runners cannot check. It pairs **`simctl`** (Simulator lifecycle) with
 **Appium + the XCUITest driver** (driving Mobile Safari via WebdriverIO).
 
 It is designed to be **additive** to a project's existing desktop browser tests,
@@ -33,8 +32,8 @@ Things that pass on desktop WebKit but break on real iOS:
 
 ## Quick start
 
-Clone this repo **next to the product repos** it tests (they're discovered as
-siblings by default; override with `NF_PLATFORM_ROOT`):
+Clone this repo **next to the product repos** it tests.
+The harness discovers sibling repos by default. Use `NF_PLATFORM_ROOT` to change their location:
 
 ```
 parent/
@@ -80,18 +79,17 @@ simctl (lib/simulator.js)   boots & owns a named iPhone Simulator
    specs/<key>.js            per-product deep functional flows
 ```
 
-Products and how each is served/probed live in **`lib/products.js`**. Each entry
-declares its web root, capabilities (webgl/audio/camera/…), orientation, any
-load-time gates to dismiss, and whether it is backend-gated (served front-end-only
-when its backend isn't run).
+**`lib/products.js`** defines the products and how to serve and probe each one.
+Each entry declares its web root, capabilities (webgl/audio/camera/…), orientation, and load-time gates to dismiss.
+It also declares whether the product is backend-gated. These products run front-end-only when their backend is not running.
 
 ## Toolchain
 
-Needs **full Xcode** (provides `simctl` + the Simulator), an **iOS runtime**,
-Node ≥ 22, and the package-local **Appium** + **XCUITest** driver (installed into
-a scoped `.appium/` by `npm run bootstrap`). Command Line Tools alone is **not**
-enough. Accepting the Xcode license is a one-time `sudo xcodebuild -license accept`
-(run it in a real terminal).
+The harness requires **full Xcode** (provides `simctl` + the Simulator), an **iOS runtime**,
+Node ≥ 22, and package-local **Appium** + **XCUITest** driver.
+`npm run bootstrap` installs the driver into a scoped `.appium/` directory.
+Command Line Tools alone is **not** enough.
+Run `sudo xcodebuild -license accept` once in a real terminal to accept the Xcode license.
 
 ## Configuration
 
