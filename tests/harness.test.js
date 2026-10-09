@@ -20,6 +20,7 @@ const products = require('../lib/products')
 const server = require('../lib/server')
 const errors = require('../lib/errors')
 const runner = require('../lib/runner')
+const probes = require('../lib/probes')
 
 function get(url, headers = {}, agent) {
     return new Promise((resolve, reject) => {
@@ -75,6 +76,44 @@ test('errors: realJsDelta returns only errors added between snapshots', () => {
     const delta = errors.realJsDelta(before, after)
     assert.equal(delta.length, 1)
     assert.match(delta[0].message, /boom/)
+})
+
+test('errors: realJsDelta still sees new errors once the capture window is full (>50)', () => {
+    // harnessState returns the most recent 50 entries while errorCount keeps
+    // the true total — a window that has slid past the older errors must not
+    // hide genuinely new breakage (the old head-based slice returned []).
+    const window = Array.from({ length: 50 }, (_, i) => ({ kind: 'error', message: `noise ${i}` }))
+    const before = { errorCount: 60, errors: window }
+    const afterErrors = window.slice(1)
+    afterErrors.push({ kind: 'error', message: 'TypeError: boom' })
+    const after = { errorCount: 61, errors: afterErrors }
+    const delta = errors.realJsDelta(before, after)
+    assert.equal(delta.length, 1)
+    assert.match(delta[0].message, /boom/)
+})
+
+test('errors: realJsDelta returns nothing when errorCount goes backwards (page reloaded)', () => {
+    const before = { errorCount: 12, errors: [] }
+    const after = { errorCount: 3, errors: [{ kind: 'error', message: 'TypeError: fresh' }] }
+    assert.deepEqual(errors.realJsDelta(before, after), [])
+})
+
+test('probes: harnessState returns the most recent errors and the true total', () => {
+    const H = { errors: [], warnings: [], glContexts: [], audioContexts: [], gestures: 0 }
+    for (let i = 0; i < 60; i++) H.errors.push({ kind: 'error', message: `e${i}` })
+    for (let i = 0; i < 40; i++) H.warnings.push(`w${i}`)
+    global.window = { __iosHarness: H }
+    try {
+        const h = probes.harnessState()
+        assert.equal(h.present, true)
+        assert.equal(h.errorCount, 60)
+        assert.equal(h.errors.length, 50)
+        assert.equal(h.errors[h.errors.length - 1].message, 'e59')
+        assert.equal(h.warnings.length, 30)
+        assert.equal(h.warnings[h.warnings.length - 1], 'w39')
+    } finally {
+        delete global.window
+    }
 })
 
 test('server: injectTrap inserts the shim inside <head> before app scripts', () => {
