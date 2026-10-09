@@ -1,0 +1,39 @@
+#!/bin/sh
+# Runnable test entrypoint: the harness's own unit tests (no Simulator needed).
+# The full Simulator suite is `npm test` / node bin/ios-test (requires macOS + Xcode).
+#
+# The unit suite asserts the platform layout (every product's webRoot has an
+# index.html). When the real sibling product repos are present (NF_PLATFORM_ROOT
+# or this repo's parent), they run against them as-is. When they are absent —
+# e.g. a CI container that only checks out this repo and cannot clone the
+# private product repos — the same unmodified suite runs against a generated
+# stub platform in a temp dir, so the harness's own logic is still fully tested.
+set -e
+cd "$(dirname "$0")/.."
+
+if node -e "
+    const p = require('./lib/products')
+    const fs = require('node:fs')
+    const missing = p.PRODUCTS.filter((x) => !fs.existsSync(require('node:path').join(x.webRootPath, 'index.html')))
+    if (missing.length) {
+        console.error('missing product webRoots: ' + missing.map((x) => x.key).join(', '))
+        process.exit(1)
+    }
+"; then
+    echo "scripts/test: product repos present — running unit suite against $(node -p "require('./lib/products').PLATFORM_ROOT")"
+    exec node --test tests/*.test.js
+fi
+
+echo "scripts/test: product repos unavailable — generating a stub platform for the unit suite"
+STUB="$(mktemp -d)"
+cleanup() { rm -rf "$STUB"; }
+trap cleanup EXIT
+
+for pair in noisedeck:app layers:public polymorphic:public shade:public foundry:public photobox:public labs/glitcher:public shuffleset:public; do
+    repo=${pair%%:*}
+    root=${pair##*:}
+    mkdir -p "$STUB/$repo/$root"
+    printf '<!doctype html><html><head><title>%s</title></head><body>stub</body></html>' "$repo" > "$STUB/$repo/$root/index.html"
+done
+
+NF_PLATFORM_ROOT="$STUB" node --test tests/*.test.js

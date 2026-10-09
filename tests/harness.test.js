@@ -21,10 +21,10 @@ const server = require('../lib/server')
 const errors = require('../lib/errors')
 const runner = require('../lib/runner')
 
-function get(url, headers = {}) {
+function get(url, headers = {}, agent) {
     return new Promise((resolve, reject) => {
         http
-            .get(url, { headers }, (res) => {
+            .get(url, { headers, agent }, (res) => {
                 let b = ''
                 res.on('data', (d) => (b += d))
                 res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: b }))
@@ -135,6 +135,73 @@ test('server: serveStatic resolves suffix byte ranges from the end of the file',
     } finally {
         await srv.close()
         fs.rmSync(webRoot, { recursive: true })
+    }
+})
+
+test('server: serveStatic close() resolves while an idle keep-alive connection is open', async () => {
+    const webRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ios-harness-close-'))
+    fs.writeFileSync(path.join(webRoot, 'index.html'), '<!doctype html><html><body>hi</body></html>')
+    const srv = await server.serveStatic({ webRoot, inject: false })
+    const agent = new http.Agent({ keepAlive: true })
+    try {
+        await get(srv.url + '/', {}, agent) // leaves one idle keep-alive socket open
+        const closed = srv.close()
+        await Promise.race([
+            closed,
+            new Promise((_, reject) => {
+                const t = setTimeout(() => reject(new Error('close() did not resolve with an idle keep-alive connection open')), 5000)
+                t.unref()
+            }),
+        ])
+    } finally {
+        agent.destroy()
+        await srv.close().catch(() => {})
+        fs.rmSync(webRoot, { recursive: true })
+    }
+})
+
+test('server: serveNode close() resolves when the child already exited', async () => {
+    const serverScript = `
+        const http = require('node:http')
+        const s = http.createServer((req, res) => { res.writeHead(200); res.end('ok') })
+        s.listen(Number(process.env.PORT), process.env.HOST || '127.0.0.1', () => {
+            setTimeout(() => process.exit(0), 300)
+        })
+    `
+    const srv = await server.serveNode({
+        repoPath: os.tmpdir(),
+        serve: { type: 'node', cmd: process.execPath, args: ['-e', serverScript], readyPath: '/', portEnv: 'PORT' },
+    })
+    try {
+        // Wait until the child has actually exited (its port stops answering).
+        const deadline = Date.now() + 10000
+        while (Date.now() < deadline) {
+            const up = await new Promise((resolve) => {
+                const req = http.get(srv.url + '/', (res) => {
+                    res.resume()
+                    resolve(true)
+                })
+                req.on('error', () => resolve(false))
+                req.setTimeout(1000, () => {
+                    req.destroy()
+                    resolve(false)
+                })
+            })
+            if (!up) break
+            await new Promise((r) => setTimeout(r, 200))
+        }
+        assert.ok(Date.now() < deadline, 'test child did not exit within 10s')
+
+        const closed = srv.close()
+        await Promise.race([
+            closed,
+            new Promise((_, reject) => {
+                const t = setTimeout(() => reject(new Error('close() did not resolve after the child exited')), 5000)
+                t.unref()
+            }),
+        ])
+    } finally {
+        await srv.close().catch(() => {})
     }
 })
 
