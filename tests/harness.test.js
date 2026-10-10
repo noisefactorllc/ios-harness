@@ -196,6 +196,48 @@ test('driver: extraCapabilities merges NF_APPIUM_CAPABILITIES over the defaults'
     assert.throws(() => driverLib.extraCapabilities(env), /must be a JSON object/)
 })
 
+test('driver: ensureForeground focuses the served tab', async () => {
+    const driverLib = require('../lib/driver')
+    const OURS = 'http://127.0.0.1:43210/app/'
+    function fakeBrowser(handles, urlFor) {
+        let current = handles[0]
+        const switches = []
+        return {
+            switches,
+            getWindowHandles: async () => [...handles],
+            getWindowHandle: async () => current,
+            switchToWindow: async (h) => {
+                if (!handles.includes(h)) throw new Error('no such window')
+                switches.push(h)
+                current = h
+            },
+            getUrl: async () => urlFor(current),
+        }
+    }
+
+    // Our tab sits mid-list: probe a, land on b, stop (c is never touched).
+    const b = fakeBrowser(['a', 'b', 'c'], (h) =>
+        h === 'b' ? OURS : 'http://foreign.example/other')
+    const d1 = driverLib.makeDriver(b)
+    assert.equal(await d1.ensureForeground(OURS), 3)
+    assert.deepEqual(b.switches, ['a', 'b'])
+    assert.equal(await b.getWindowHandle(), 'b')
+
+    // No tab carries the served host: the entry window is restored instead of
+    // stranding focus on the last handle probed.
+    const b2 = fakeBrowser(['a', 'b', 'c'], () => 'http://foreign.example/other')
+    const d2 = driverLib.makeDriver(b2)
+    await d2.ensureForeground(OURS)
+    assert.deepEqual(b2.switches, ['a', 'b', 'c', 'a'])
+    assert.equal(await b2.getWindowHandle(), 'a')
+
+    // Unparseable URL: nothing to match on — no focus shuffling at all.
+    const b3 = fakeBrowser(['a', 'b'], () => 'http://foreign.example/other')
+    const d3 = driverLib.makeDriver(b3)
+    await d3.ensureForeground('not a url')
+    assert.deepEqual(b3.switches, [])
+})
+
 test('server: serveStatic serves, injects, supports Range, blocks traversal', async () => {
     const nd = products.BY_KEY.get('noisedeck')
     const srv = await server.serveStatic({ webRoot: nd.webRootPath, inject: true })
