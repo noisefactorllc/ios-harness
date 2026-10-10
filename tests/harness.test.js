@@ -131,6 +131,71 @@ test('server: injectTrap prepends when there is no <head>', () => {
     assert.ok(out.indexOf('data-ios-harness') < out.indexOf('<div>'))
 })
 
+test('server: parsePortPool reads ranges, singles, and rejects garbage', () => {
+    assert.deepEqual(server.parsePortPool('43117-43119'), [43117, 43118, 43119])
+    assert.deepEqual(server.parsePortPool('43117, 43120'), [43117, 43120])
+    assert.deepEqual(server.parsePortPool('43117-43118,43125'), [43117, 43118, 43125])
+    assert.deepEqual(server.parsePortPool(undefined), [])
+    assert.deepEqual(server.parsePortPool(''), [])
+    // Bad input fails fast (naming the entry) instead of silently degrading
+    // to bind(0), which cannot work on the sandboxed hosts this targets.
+    for (const bad of ['not a pool', '43117-', '10-3', '0', '700000', '43117,']) {
+        assert.throws(() => server.parsePortPool(bad), /NF_PORT_POOL/, `"${bad}" must throw`)
+    }
+})
+
+test('server: getFreePort picks bindable ports from NF_PORT_POOL when set', async () => {
+    const net = require('node:net')
+    const bindable = (port) =>
+        new Promise((resolve) => {
+            const s = net.createServer()
+            s.once('error', () => resolve(false))
+            s.listen(port, '127.0.0.1', () => s.close(() => resolve(true)))
+        })
+    // Unset: ephemeral port, unrelated to any pool.
+    process.env.NF_PORT_POOL = ''
+    const ephemeral = await server.getFreePort()
+    assert.ok(ephemeral > 0)
+    // Find a 3-port pool that is actually free, so a foreign listener on a
+    // shared host cannot make rotation hand out a duplicate.
+    let pool = null
+    outer: for (let base = 43100; base < 44100 && !pool; base += 7) {
+        for (const p of [base, base + 1, base + 2]) {
+            if (!(await bindable(p))) continue outer
+        }
+        pool = [base, base + 1, base + 2]
+    }
+    assert.ok(pool, 'no free 3-port pool found for the test')
+    process.env.NF_PORT_POOL = pool.join(',')
+    try {
+        const picked = new Set()
+        for (let i = 0; i < 3; i++) {
+            const port = await server.getFreePort()
+            assert.ok(pool.includes(port), `port ${port} must come from the pool`)
+            picked.add(port)
+        }
+        assert.equal(picked.size, 3, 'rotation must not hand out the same port while it is in use')
+    } finally {
+        process.env.NF_PORT_POOL = ''
+    }
+})
+
+test('driver: extraCapabilities merges NF_APPIUM_CAPABILITIES over the defaults', () => {
+    const driverLib = require('../lib/driver')
+    const env = {}
+    assert.deepEqual(driverLib.extraCapabilities(env), {})
+    env.NF_APPIUM_CAPABILITIES = '{"appium:webdriverAgentPort":43125,"appium:platformVersion":"99"}'
+    assert.deepEqual(driverLib.extraCapabilities(env), {
+        'appium:webdriverAgentPort': 43125,
+        // a set key overrides the default; defaults not named stay untouched
+        'appium:platformVersion': '99',
+    })
+    env.NF_APPIUM_CAPABILITIES = '[]'
+    assert.throws(() => driverLib.extraCapabilities(env), /must be a JSON object/)
+    env.NF_APPIUM_CAPABILITIES = '{not json'
+    assert.throws(() => driverLib.extraCapabilities(env), /must be a JSON object/)
+})
+
 test('server: serveStatic serves, injects, supports Range, blocks traversal', async () => {
     const nd = products.BY_KEY.get('noisedeck')
     const srv = await server.serveStatic({ webRoot: nd.webRootPath, inject: true })

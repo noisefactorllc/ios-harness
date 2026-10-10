@@ -99,6 +99,8 @@ Run `sudo xcodebuild -license accept` once in a real terminal to accept the Xcod
 | `NF_IOS_DEVICE` | pin device type, e.g. `iPhone 16` (default: newest plain iPhone) |
 | `NF_IOS_RUNTIME` | pin runtime, e.g. `iOS 18.2` (default: newest available) |
 | `NF_IOS_DEVICE_NAME` | name of the reused Simulator device (default `nf-ios-harness`) |
+| `NF_PORT_POOL` | restrict auto-selected ports to these, e.g. `43117-43124` (sandboxed hosts that forbid `bind(0)`; unset = any free port) |
+| `NF_APPIUM_CAPABILITIES` | JSON object merged over the session's default Appium capabilities (e.g. prebuilt WDA / WDA port placement on sandboxed hosts) |
 
 ## Roadmap
 

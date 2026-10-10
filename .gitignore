@@ -4,4 +4,8 @@ artifacts/
 # Package-scoped Appium home (xcuitest driver + WebDriverAgent build cache)
 .appium/
 
+# Prebuilt WebDriverAgent derived data (when NF_APPIUM_CAPABILITIES points
+# the WDA build at a sandbox-writable path)
+.wda-dd/
+
 node_modules/
