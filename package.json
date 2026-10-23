@@ -29,5 +29,8 @@
     "appiumDrivers": {
         "comment": "Installed into the package-scoped APPIUM_HOME by bin/ios-bootstrap, not via npm. xcuitest 11.x requires appium >=3 and supports recent Xcode/iOS.",
         "xcuitest": "latest"
+    },
+    "overrides": {
+        "basic-ftp": "6.2.3"
     }
 }
