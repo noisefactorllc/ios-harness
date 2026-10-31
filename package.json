@@ -32,6 +32,7 @@
     },
     "overrides": {
         "basic-ftp": "6.2.3",
-        "shell-quote": "1.11.0"
+        "shell-quote": "1.11.0",
+        "extract-zip": "npm:@electron-internal/extract-zip@1.0.8"
     }
 }
